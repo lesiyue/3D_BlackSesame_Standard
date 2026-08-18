@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <title>3D 標注閉環工具</title>
+    <link rel="stylesheet" href="/static/main.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>3D 標注閉環工具 <span class="version">v1.0</span></h1>
+            <div class="status-bar">
+                <span id="running-indicator" class="dot dot-idle"></span>
+                <span id="running-text">待命</span>
+            </div>
+        </header>
+
+        <div id="warn-banner" class="warn-banner">
+            本次任務的 GT ID（人工確認）導入平台後，需要人工校驗位置和尺寸。
+        </div>
+
+        <section class="gt-section">
+            <h2>GT ID 列表（人工準備）</h2>
+
+            <div class="gt-block">
+                <div class="gt-title">靜態 GT</div>
+                <div class="gt-file">static_trackingId.txt</div>
+                <div id="static-gt-tags" class="tag-list"></div>
+                <div class="gt-input">
+                    <input type="text" id="static-gt-input" placeholder="輸入 ID 後按 Enter">
+                    <button onclick="addStaticGT()">新增</button>
+                </div>
+            </div>
+
+            <div class="gt-block">
+                <div class="gt-title">動態 GT（可空）</div>
+                <div class="gt-file">dynamic_trackingId.txt</div>
+                <div id="dynamic-gt-tags" class="tag-list"></div>
+                <div class="gt-input">
+                    <input type="text" id="dynamic-gt-input" placeholder="輸入 ID 後按 Enter">
+                    <button onclick="addDynamicGT()">新增</button>
+                </div>
+            </div>
+        </section>
+
+        <section class="workflow-section">
+            <h2>計算流程（人工選擇）</h2>
+
+            <div class="workflow-row">
+                <label class="radio-label">
+                    <input type="radio" name="workflow" value="A" checked>
+                    <span class="radio-text">流程 A：靜態優先</span>
+                    <span class="radio-hint">用 static GT 找其他靜態物</span>
+                </label>
+            </div>
+            <div class="workflow-row">
+                <label class="radio-label">
+                    <input type="radio" name="workflow" value="B">
+                    <span class="radio-text">流程 B：動態優先</span>
+                    <span class="radio-hint">用 dynamic GT，剩下 ID 全標靜態</span>
+                </label>
+            </div>
+
+            <div class="workflow-row" id="threshold-row" style="display:none;">
+                <label>位移閾值（流程 B）</label>
+                <input type="number" id="displacement-threshold" value="0.5" step="0.1" min="0">
+                <span>米</span>
+                <span class="hint">> 此值視為動態</span>
+            </div>
+
+            <div class="workflow-row">
+                <label class="checkbox-label">
+                    <input type="checkbox" id="enable-size-refine">
+                    <span>執行尺寸精算（叠幀）</span>
+                </label>
+            </div>
+
+            <div class="workflow-row" id="frames-row">
+                <label>叠幀幀段</label>
+                <input type="number" id="frame-start" value="7" min="0">
+                <span>-</span>
+                <input type="number" id="frame-end" value="15" min="0">
+                <span class="hint">人工根據場景判斷</span>
+            </div>
+
+            <div class="workflow-buttons">
+                <button class="btn btn-secondary" id="btn-classify" onclick="runClassify()">
+                    執行選中流程
+                </button>
+                <button class="btn btn-primary" id="btn-all" onclick="runAll()">
+                    一鍵全跑（流程 + 尺寸精算 + 生成導入）
+                </button>
+                <button class="btn btn-secondary" id="btn-gen-import" onclick="runGenImport()">
+                    生成導入文件
+                </button>
+            </div>
+        </section>
+
+        <section class="steps">
+            <h2>操作流程</h2>
+
+            <div class="step">
+                <div class="step-num">1</div>
+                <div class="step-content">
+                    <div class="step-title">平台導出</div>
+                    <div class="step-desc">
+                        在標注平台任務頁 → 點擊油猴面板 <code>导出 lioJson + 标注 汇总 (D)</code>
+                        → 保存到 <code>data/task_export_with_annots.json</code>
+                    </div>
+                    <div class="step-file" id="file-export">未檢測到</div>
+                </div>
+            </div>
+
+            <div class="step">
+                <div class="step-num">2</div>
+                <div class="step-content">
+                    <div class="step-title">人工挑選 GT ID</div>
+                    <div class="step-desc">在上方 GT ID 列表區填入人工確認的 ID</div>
+                </div>
+            </div>
+
+            <div class="step">
+                <div class="step-num">3</div>
+                <div class="step-content">
+                    <div class="step-title">執行 Python pipeline</div>
+                    <div class="step-desc">點擊上方按鈕，進度實時顯示在下方日誌</div>
+                    <div class="step-file" id="file-classify">未運行</div>
+                    <div class="step-file" id="file-import">未運行</div>
+                </div>
+            </div>
+
+            <div class="step">
+                <div class="step-num">4</div>
+                <div class="step-content">
+                    <div class="step-title">平台導入</div>
+                    <div class="step-desc">
+                        在標注平台任務頁 → 點擊油猴面板 <code>导入 3D 框 (E)</code>
+                        → 選擇 <code>data/import_3d_boxes.json</code>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section class="logs">
+            <div class="logs-header">
+                <h2>實時日誌</h2>
+                <button class="btn-tiny" onclick="clearLog()">清空</button>
+            </div>
+            <div id="log-container" class="log-container"></div>
+        </section>
+
+        <section class="stats" id="stats-section" style="display:none;">
+            <h2>判定結果</h2>
+            <div class="stat-cards">
+                <div class="card">
+                    <div class="card-num" id="stat-static">-</div>
+                    <div class="card-label">STATIC</div>
+                </div>
+                <div class="card">
+                    <div class="card-num" id="stat-moving">-</div>
+                    <div class="card-label">DYNAMIC</div>
+                </div>
+                <div class="card">
+                    <div class="card-num" id="stat-total">-</div>
+                    <div class="card-label">總計</div>
+                </div>
+            </div>
+            <details>
+                <summary>查看 ID 明細</summary>
+                <div id="id-detail"></div>
+            </details>
+        </section>
+    </div>
+
+    <script src="/static/main.js"></script>
+</body>
+</html>

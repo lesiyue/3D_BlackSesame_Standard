@@ -1,0 +1,68 @@
+# 3D 標注閉環工具 - 統一參數配置
+# 修改後重啟 server.py 生效
+
+paths:
+  # 數據文件夾（自動偵測）
+  data_dir: "data"
+  output_dir: "output"
+  scripts_dir: "scripts"
+  pcd_dir: "data/pcd"
+
+# 平台文件
+files:
+  task_export: "task_export_with_annots.json"   # 平台導出（cmdD）
+  static_classification: "fixed_static_classification.json"  # 流程 A：靜態優先輸出
+  dynamic_classification: "dynamic_priority_classification.json"  # 流程 B：動態優先輸出
+  id_size_refined: "id_size_refined.json"  # 叠幀精算的 ID 尺寸
+  dynamic_output: "import_3d_boxes.json"  # 最終導入平台
+  static_gt: "static_trackingId.txt"   # 靜態 GT 列表
+  dynamic_gt: "dynamic_trackingId.txt"  # 動態 GT 列表（可空）
+
+# 計算流程選擇（人工單選）
+workflow:
+  selected: "A"   # A=靜態優先 / B=動態優先
+  enable_size_refine: true  # 是否執行叠幀尺寸精算
+  size_frames: [7, 15]  # 叠幀幀段 [start, end]，人工根據場景判斷
+  displacement_threshold: 0.5  # 流程 B 的位移閾值（米），> 此值視為動態
+
+# 靜態判定參數
+static:
+  pcd_cluster:
+    voxel_size: 0.05       # 体素邊長 (m)
+    eps: 0.25              # DBSCAN 鄰域半徑
+    min_samples: 50        # DBSCAN 核心點樣本數
+    ground_thresh: -1.5    # 低於此 z 視為地面
+    max_cost: 1.2          # 跨幀匈牙利綜合成本上限
+  full_id_classifier:
+    sigma_threshold: 0.5   # σ < 此值視為 STATIC
+    mean_threshold: 3.0    # mean < 此值視為 STATIC
+  gt_ids:
+    - "222"
+    - "376"
+    - "428"
+    - "441"
+    - "960"
+
+# 動態處理參數（卡爾曼）
+dynamic:
+  kalman:
+    q_pos: 0.5             # 位置過程噪聲
+    q_vel: 0.1             # 速度過程噪聲
+    q_size: 0.001          # 尺寸過程噪聲
+    r: 0.2                 # 測量噪聲
+  size_prior:
+    observation_weight: 0.3    # 觀測權重 (1-w 用先驗)
+    min_ratio: 0.5             # 最小尺寸倍數（相對於 prior）
+    max_ratio: 1.3             # 最大尺寸倍數
+
+# Ground 估計
+ground:
+  method: "percentile"     # percentile / ransac
+  z_percentile: 5          # 低於此百分位視為地面
+  xy_radius: 30.0          # ego 周圍半徑 (m)
+
+# 服務
+server:
+  host: "127.0.0.1"
+  port: 8765
+  open_browser: true       # 啟動後自動打開瀏覽器
